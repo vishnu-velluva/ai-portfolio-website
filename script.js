@@ -289,11 +289,16 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   /* --------------------------------------------------------------------------
-     7. CONTACT FORM VALIDATION & CLIENT-SIDE CONSOLE LOGGING
-     - Validates required inputs with inline error helpers below fields
-     - Honeypot anti-spam check for bots
-     - Displays "Sending..." state, logs payload to console, and shows success card
+     7. CONTACT FORM: DIRECT SUPABASE SUBMISSION (TABLE: 'enquiries')
+     - Directly talks to Supabase from the browser using the public anon key.
+     - Row Level Security (RLS) restricts anonymous visitors to INSERT only.
+     - Never displays fake success. If the insert fails, alerts the visitor
+       and points them immediately to WhatsApp.
      -------------------------------------------------------------------------- */
+  // EDIT HERE: Replace with your actual Supabase Project URL and Anon Public Key
+  const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+  const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+
   const contactForm = document.getElementById('contact-form');
   const submitBtn = document.getElementById('submit-btn');
   const btnText = submitBtn ? submitBtn.querySelector('.btn-text') : null;
@@ -346,16 +351,16 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   if (contactForm) {
-    contactForm.addEventListener('submit', function (event) {
+    contactForm.addEventListener('submit', async function (event) {
       event.preventDefault();
 
       // Reset previous status
       formStatus.className = 'dark-form-status';
-      formStatus.textContent = '';
+      formStatus.innerHTML = '';
 
       let hasErrors = false;
 
-      // 1. Honeypot check (real users never fill this)
+      // 1. Honeypot check (real users never see or fill this)
       if (inputHoneypot && inputHoneypot.value.trim() !== '') {
         console.warn('Bot submission blocked via honeypot field.');
         return;
@@ -409,31 +414,47 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
 
-      // 6. Valid Submission State
+      // 6. Direct Supabase Submission State
       submitBtn.disabled = true;
       if (btnText) btnText.textContent = 'Sending...';
 
       const payload = {
         name: nameVal,
         email: emailVal,
-        phone: inputPhone.value.trim() || 'Not provided',
+        phone: inputPhone.value.trim() || null,
         service: serviceVal,
-        message: messageVal,
-        submittedAt: new Date().toISOString()
+        message: messageVal
       };
 
-      console.log('Enquiry Form Submission Received:', payload);
+      try {
+        // Verify credentials have been placed
+        if (!window.supabase || SUPABASE_URL === 'YOUR_SUPABASE_URL' || SUPABASE_ANON_KEY === 'YOUR_SUPABASE_ANON_KEY') {
+          throw new Error('Supabase credentials have not been configured in script.js yet.');
+        }
 
-      // Short delay for smooth visual feedback
-      setTimeout(function () {
+        // Initialize Supabase Client with public anon key
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Insert row into 'enquiries' table
+        const { error } = await supabaseClient.from('enquiries').insert([payload]);
+
+        if (error) {
+          throw error;
+        }
+
+        // Real success state
+        formStatus.className = 'dark-form-status status-success';
+        formStatus.textContent = 'Thank you! Your enquiry has been received. I will reply to you today.';
+        contactForm.reset();
+      } catch (err) {
+        console.error('Enquiry submission error:', err);
+        // Never show fake success: display real failure and point visitor to WhatsApp
+        formStatus.className = 'dark-form-status status-error';
+        formStatus.innerHTML = 'Unable to send message directly. Please <a href="https://wa.me/918592947287?text=Hi%20Vishnu,%20I%20saw%20your%20website" target="_blank" rel="noopener" class="status-error-link">message me on WhatsApp</a> instead.';
+      } finally {
         submitBtn.disabled = false;
         if (btnText) btnText.textContent = 'Send enquiry';
-
-        formStatus.classList.add('status-success');
-        formStatus.textContent = 'Thank you! Your enquiry has been received. I will reply to you today.';
-
-        contactForm.reset();
-      }, 400);
+      }
     });
   }
 });

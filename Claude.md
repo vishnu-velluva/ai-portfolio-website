@@ -79,6 +79,16 @@ Every section must serve one of these two goals. If a section serves neither, do
 - All animations subtle and under 400ms.
 - Never build a form that pretends to send something. If there's no backend behind it, say so and use direct links instead.
 
+## Backend rules
+- There is no custom backend and no serverless function. The form talks directly to Supabase from the browser.
+- Supabase table: "enquiries" (id, created_at, name, email, phone, service, message).
+- Use the Supabase anon key in frontend code. It is public by design and protected by Row Level Security.
+- The service_role key must NEVER appear anywhere in this project. Never read it, never print it, never suggest using it.
+- Row Level Security is on. Anonymous visitors may INSERT only. There is no SELECT, UPDATE or DELETE policy, so enquiries can never be read from a browser.
+- I read my enquiries by logging in to the Supabase dashboard. The website never reads them.
+- Validate in the browser for a good experience, and rely on database CHECK constraints as the real limit.
+- Never show a fake success. If the insert fails, the visitor must see a real error and be pointed to WhatsApp instead.
+
 ## How we work together
 - Read this file before answering anything.
 - If something in my request is unclear, ask me before writing code.
