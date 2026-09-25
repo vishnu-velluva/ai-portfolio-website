@@ -1,3 +1,36 @@
+// 1. Import Supabase Client from jsDelivr ESM CDN (No build step, no npm, native browser ES Module)
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+/* ============================================================================
+   SUPABASE CLIENT CONFIGURATION & SECURITY EXPLANATION
+
+   Why is it safe for this anon key to be public in frontend code?
+   The Supabase "anon" (anonymous) key is designed to be public. Security is NOT
+   achieved by keeping this key secret; it is enforced directly on PostgreSQL via
+   Row Level Security (RLS). Because your RLS policy only permits INSERTs from
+   anonymous visitors, any visitor or bot can only insert new messages. They have
+   zero permission to SELECT (read), UPDATE, or DELETE any records.
+
+   CRITICAL SECURITY NOTICE:
+   NEVER paste your "service_role" secret key here! The service_role key bypasses
+   all Row Level Security and has full admin control. Only paste the public "anon"
+   key from your Supabase Dashboard -> Project Settings -> API -> Project API keys.
+   ============================================================================ */
+
+// EDIT THESE TWO LINES: Swap in your Supabase project URL and anon public key
+export const SUPABASE_URL = 'https://aoaqhksvukxqvyxicmka.supabase.co';
+export const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+
+// Initialize the Supabase Client (attached to window for testing / verification)
+const supabase = (SUPABASE_URL && SUPABASE_ANON_KEY && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY')
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+
+// Expose client to window for RLS verification in DevTools console
+if (typeof window !== 'undefined') {
+  window.supabase = supabase;
+}
+
 /**
  * ============================================================================
  * VISHNU VELLUVA — PERSONAL PORTFOLIO JAVASCRIPT
@@ -290,15 +323,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
   /* --------------------------------------------------------------------------
      7. CONTACT FORM: DIRECT SUPABASE SUBMISSION (TABLE: 'enquiries')
-     - Directly talks to Supabase from the browser using the public anon key.
+     - Uses top-level Supabase client configured with public anon key.
      - Row Level Security (RLS) restricts anonymous visitors to INSERT only.
      - Never displays fake success. If the insert fails, alerts the visitor
        and points them immediately to WhatsApp.
      -------------------------------------------------------------------------- */
-  // EDIT HERE: Replace with your actual Supabase Project URL and Anon Public Key
-  const SUPABASE_URL = 'YOUR_SUPABASE_URL';
-  const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
-
   const contactForm = document.getElementById('contact-form');
   const submitBtn = document.getElementById('submit-btn');
   const btnText = submitBtn ? submitBtn.querySelector('.btn-text') : null;
@@ -360,13 +389,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
       let hasErrors = false;
 
-      // 1. Honeypot check (real users never see or fill this)
+      // 1. Honeypot check:
+      // If the hidden honeypot field named "website" has any value at all,
+      // show the normal success message, save nothing, and stop. Bots must never learn they were caught.
       if (inputHoneypot && inputHoneypot.value.trim() !== '') {
-        console.warn('Bot submission blocked via honeypot field.');
+        contactForm.reset();
+        formStatus.className = 'dark-form-status status-success';
+        formStatus.textContent = "Thanks — I've got it. I usually reply the same day.";
         return;
       }
 
-      // 2. Validate Name
+      // 2. Browser validation:
+      // Name not empty
       const nameVal = inputName.value.trim();
       if (!nameVal) {
         setInlineError(inputName, errorName, 'Please enter your name.');
@@ -375,7 +409,7 @@ document.addEventListener('DOMContentLoaded', function () {
         clearInlineError(inputName, errorName);
       }
 
-      // 3. Validate Email
+      // Email in sensible format
       const emailVal = inputEmail.value.trim();
       if (!emailVal) {
         setInlineError(inputEmail, errorEmail, 'Please enter your email address.');
@@ -387,8 +421,8 @@ document.addEventListener('DOMContentLoaded', function () {
         clearInlineError(inputEmail, errorEmail);
       }
 
-      // 4. Validate Service selection
-      const serviceVal = inputService.value;
+      // Service selection
+      const serviceVal = inputService.value.trim();
       if (!serviceVal) {
         setInlineError(inputService, errorService, 'Please select a service.');
         hasErrors = true;
@@ -396,13 +430,13 @@ document.addEventListener('DOMContentLoaded', function () {
         clearInlineError(inputService, errorService);
       }
 
-      // 5. Validate Message
+      // Message not empty and under 2000 characters
       const messageVal = inputMessage.value.trim();
       if (!messageVal) {
         setInlineError(inputMessage, errorMessage, 'Please enter your message.');
         hasErrors = true;
-      } else if (messageVal.length < 10) {
-        setInlineError(inputMessage, errorMessage, 'Please provide a little more detail (at least 10 characters).');
+      } else if (messageVal.length > 2000) {
+        setInlineError(inputMessage, errorMessage, 'Please keep your message under 2000 characters.');
         hasErrors = true;
       } else {
         clearInlineError(inputMessage, errorMessage);
@@ -414,10 +448,11 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
 
-      // 6. Direct Supabase Submission State
+      // 3. SENDING STATE: disable submit button, change text to "Sending…", stop double submissions
       submitBtn.disabled = true;
-      if (btnText) btnText.textContent = 'Sending...';
+      if (btnText) btnText.textContent = 'Sending…';
 
+      // Trim whitespace from every field before sending
       const payload = {
         name: nameVal,
         email: emailVal,
@@ -427,33 +462,33 @@ document.addEventListener('DOMContentLoaded', function () {
       };
 
       try {
-        // Verify credentials have been placed
-        if (!window.supabase || SUPABASE_URL === 'YOUR_SUPABASE_URL' || SUPABASE_ANON_KEY === 'YOUR_SUPABASE_ANON_KEY') {
-          throw new Error('Supabase credentials have not been configured in script.js yet.');
+        // Verify credentials have been configured
+        if (!supabase || SUPABASE_ANON_KEY === 'YOUR_SUPABASE_ANON_KEY') {
+          throw new Error('Supabase anon key has not been pasted at the top of script.js yet.');
         }
 
-        // Initialize Supabase Client with public anon key
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-        // Insert row into 'enquiries' table
-        const { error } = await supabaseClient.from('enquiries').insert([payload]);
+        // Insert row into 'enquiries' table (id and created_at filled by database)
+        const { error } = await supabase.from('enquiries').insert([payload]);
 
         if (error) {
           throw error;
         }
 
-        // Real success state
-        formStatus.className = 'dark-form-status status-success';
-        formStatus.textContent = 'Thank you! Your enquiry has been received. I will reply to you today.';
+        // 4. SUCCESS STATE: clear every field, re-enable button, show confirmation
         contactForm.reset();
-      } catch (err) {
-        console.error('Enquiry submission error:', err);
-        // Never show fake success: display real failure and point visitor to WhatsApp
-        formStatus.className = 'dark-form-status status-error';
-        formStatus.innerHTML = 'Unable to send message directly. Please <a href="https://wa.me/918592947287?text=Hi%20Vishnu,%20I%20saw%20your%20website" target="_blank" rel="noopener" class="status-error-link">message me on WhatsApp</a> instead.';
-      } finally {
         submitBtn.disabled = false;
         if (btnText) btnText.textContent = 'Send enquiry';
+
+        formStatus.className = 'dark-form-status status-success';
+        formStatus.textContent = "Thanks — I've got it. I usually reply the same day.";
+      } catch (err) {
+        console.error('Enquiry submission error:', err);
+        // 5. ERROR STATE: re-enable button, never show success on failure, show real error pointing to WhatsApp
+        submitBtn.disabled = false;
+        if (btnText) btnText.textContent = 'Send enquiry';
+
+        formStatus.className = 'dark-form-status status-error';
+        formStatus.innerHTML = 'Something went wrong sending that. <a href="https://wa.me/918592947287?text=Hi%20Vishnu,%20I%20saw%20your%20website" target="_blank" rel="noopener" class="status-error-link">Message me on WhatsApp instead</a>';
       }
     });
   }
